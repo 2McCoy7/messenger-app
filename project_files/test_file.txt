@@ -1,1 +1,1 @@
-Sample project file for testing
+Test file generated.
