@@ -1,61 +1,48 @@
-name: Build and Deploy Automation
+name: Build and Deploy
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Set up Job
-        run: echo "🚀 Starting Build and Deployment Process"
+    env:
+      REPO_NAME: ${{ github.repository }}
+      DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
+    steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.DEPLOY_TOKEN }}
+          submodules: recursive
 
-      - name: Universal Cleanup for Git Issues
+      - name: Pull Latest Changes to Prevent Conflicts
         run: |
-          echo "🧹 Cleaning up Git environment..."
-          git reset --hard || echo "✅ Reset completed."
-          git clean -fdx || echo "✅ Clean completed."
-          git config --unset-all core.sshCommand || echo "✅ SSH config cleared."
-          [ -f .gitmodules ] && rm .gitmodules && echo "🗑️ Removed .gitmodules file."
-          rm -rf .git/modules || echo "✅ Submodule metadata removed."
-          git fsck --full || echo "✅ Repository integrity checked."
+          git pull origin main || echo "No pull needed or conflict resolved"
 
-      - name: Set up Git Configuration
+      - name: Clean Up Git Issues and Submodules
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git submodule deinit -f .
+          git submodule update --init --recursive || echo "No submodules or already updated"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Create Any Missing Directories and Files
+      - name: Generate Project Files and Build Artifacts
         run: |
-          echo "📂 Ensuring necessary directories and files exist..."
-          for dir in $(find . -type d); do
-            mkdir -p "$dir" || echo "✅ Directory $dir exists."
-          done
-
-          # Create a placeholder file in empty directories (Git ignores empty folders)
-          find . -type d -empty -exec touch {}/.gitkeep \;
-
-      - name: Prevent Conflicts with Latest Changes
-        run: |
-          echo "🔄 Pulling latest changes..."
-          git pull origin main --rebase || echo "✅ No conflicts detected."
+          mkdir -p project_files
+          echo "Sample project file for testing" > project_files/test_file.txt
 
       - name: Commit and Push Changes
-        env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
         run: |
-          git add -A
-          git diff-index --quiet HEAD || git commit -m "🚀 Automated build and deployment"
-          git remote set-url origin https://x-access-token:${{ secrets.DEPLOY_TOKEN }}@github.com/${{ github.repository }}.git
-          git push origin main || echo "⚠️ No new changes to push."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Complete Job
-        run: echo "✅ Build and deployment completed successfully."
+          git add .
+          git commit -m "🚀 Automated build and deployment" || echo "No changes to commit"
+          git pull origin main --rebase
+          git push https://x-access-token:${{ secrets.DEPLOY_TOKEN }}@github.com/${{ github.repository }}.git main --force
